@@ -3,6 +3,7 @@ package main
 import (
 	"io/ioutil"
 	"net/http"
+	"sync"
 
 	"github.com/labstack/echo"
 )
@@ -15,6 +16,7 @@ var (
 	listPostsApi   = "https://disqus.com/api/3.0/threads/listPosts.json"
 	listPostsLimit = "100"
 	cached         map[string][]byte
+	lock           sync.RWMutex
 )
 
 func updatelink(link string) []byte {
@@ -27,17 +29,22 @@ func updatelink(link string) []byte {
 	if err != nil {
 		return []byte("{\"result\": \"failed to read body\"}")
 	}
+
+	lock.Lock()
 	if len(cached) > maxCachedLimit {
 		cached = make(map[string][]byte)
 	}
 	cached[link] = encodedJSON
+	lock.Unlock()
 	return encodedJSON
 }
 
 // /listPosts
 func handleListPosts(c echo.Context) error {
 	link := c.QueryParam("link")
+	lock.RLock()
 	result, ok := cached[link]
+	lock.RUnlock()
 	if ok {
 		go updatelink(link)
 		return c.JSONBlob(http.StatusOK, result)
